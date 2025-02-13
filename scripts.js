@@ -1,76 +1,104 @@
-// Debug function to log cookie states
+// Initialize dataLayer before GTM loads
+window.dataLayer = window.dataLayer || [];
+
+// GTM and GA Configuration
+const GTM_ID = 'GTM-5S8T487L';
+const GA4_ID = 'G-XXXXXXXXXX'; // Replace with your GA4 Measurement ID
+
+// Debug function to log cookie states and GTM/GA status
 function logCookieStates() {
     const consent = CookieYes.getConsent();
-    console.group('CookieYes Consent Status:');
-    console.log('Analytics:', consent.analytics);
-    console.log('Marketing:', consent.marketing);
-    console.log('Necessary:', consent.necessary);
-    console.log('Functional:', consent.functional);
+    console.group('Consent and Tracking Status:');
+    console.log('CookieYes Consent:', consent);
     console.log('GTM Status:', window.google_tag_manager ? 'Loaded' : 'Not Loaded');
+    console.log('GA4 Status:', window.gtag ? 'Available' : 'Not Available');
+    console.log('DataLayer Length:', window.dataLayer.length);
     console.groupEnd();
 }
 
-// Function to initialize Google Analytics
-function initializeGA() {
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'GTM-5S8T487L', {
-        'cookie_flags': 'max-age=7200;secure;samesite=none',
-        'debug_mode': true
+// Function to handle GTM consent state
+function updateGTMConsent(consent) {
+    // Push consent state to dataLayer
+    window.dataLayer.push({
+        event: 'consent_updated',
+        consent_state: {
+            analytics_storage: consent.analytics ? 'granted' : 'denied',
+            ad_storage: consent.marketing ? 'granted' : 'denied',
+            functionality_storage: consent.functional ? 'granted' : 'denied',
+            security_storage: 'granted', // Always granted for essential cookies
+            personalization_storage: consent.functional ? 'granted' : 'denied'
+        }
     });
-    console.log('Google Analytics initialized with GTM-5S8T487L');
-    
-    // Log dataLayer contents
-    console.group('DataLayer Contents:');
-    console.log(JSON.stringify(window.dataLayer, null, 2));
-    console.groupEnd();
+
+    // Push detailed consent data for GTM variables
+    window.dataLayer.push({
+        cookieyes_consent: consent,
+        event: 'cookieyes_consent_update'
+    });
+
+    // Log consent update
+    console.log('Consent State Updated:', new Date().toISOString());
+    logCookieStates();
 }
 
-// Handle cookie consent changes
-window.addEventListener('cookieyes_consent_update', function(event) {
-    console.log('Consent Update Event Triggered:', new Date().toISOString());
+// Function to track page view in GA4 (through GTM)
+function trackPageView() {
+    window.dataLayer.push({
+        event: 'page_view',
+        page: {
+            title: document.title,
+            location: window.location.href,
+            path: window.location.pathname
+        }
+    });
+}
+
+// Function to track custom events
+function trackEvent(eventName, eventParams = {}) {
+    window.dataLayer.push({
+        event: eventName,
+        ...eventParams
+    });
+}
+
+// Initialize GTM consent mode
+function initializeGTMConsent() {
     const consent = CookieYes.getConsent();
-    logCookieStates();
-
-    if (consent.analytics === true) {
-        console.log("Analytics cookies enabled - initializing GA");
-        initializeGA();
-    } else {
-        console.log("Analytics cookies disabled - removing GA cookies");
-        // Remove Google Analytics cookies
-        document.cookie = '_ga=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Domain=' + window.location.hostname;
-        document.cookie = '_gid=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Domain=' + window.location.hostname;
-        document.cookie = '_gat=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Domain=' + window.location.hostname;
-        console.log("GA cookies removed");
-    }
-});
-
-// Initial consent check on page load
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Page loaded - checking initial consent status:', new Date().toISOString());
-    logCookieStates();
     
-    // Check if analytics is already allowed
-    const initialConsent = CookieYes.getConsent();
-    if (initialConsent.analytics === true) {
-        console.log("Analytics pre-approved - initializing GA");
-        initializeGA();
-    }
-});
-
-// Debug function to list all cookies
-function listAllCookies() {
-    console.group('Current Cookies:');
-    const cookies = document.cookie.split(';').map(cookie => cookie.trim());
-    console.table(cookies.map(cookie => {
-        const [name, value] = cookie.split('=');
-        return { name, value };
-    }));
-    console.groupEnd();
+    // Set default consent state (privacy-first approach)
+    window.dataLayer.push({
+        'event': 'default_consent',
+        'consent_default': {
+            'analytics_storage': 'denied',
+            'ad_storage': 'denied',
+            'functionality_storage': 'denied',
+            'personalization_storage': 'denied',
+            'security_storage': 'granted'
+        }
+    });
+    
+    // Update with actual consent state
+    updateGTMConsent(consent);
 }
 
-// Add debug panel (visible on all environments for testing)
+// Handle CookieYes consent changes
+window.addEventListener('cookieyes_consent_update', function(event) {
+    const consent = CookieYes.getConsent();
+    updateGTMConsent(consent);
+});
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Initializing consent management...');
+    initializeGTMConsent();
+    
+    // Track initial page view after consent is established
+    if (CookieYes.getConsent().analytics) {
+        trackPageView();
+    }
+});
+
+// Debug Tools
 const debugPanel = document.createElement('div');
 debugPanel.style.cssText = `
     position: fixed;
@@ -85,33 +113,31 @@ debugPanel.style.cssText = `
     font-size: 12px;
 `;
 
+// Add debug buttons
 const debugButton = document.createElement('button');
-debugButton.textContent = 'Debug Cookies';
+debugButton.textContent = 'Debug Tracking';
 debugButton.style.marginRight = '5px';
 debugButton.onclick = function() {
     console.clear();
-    console.log('Debug requested at:', new Date().toISOString());
-    console.log('Page URL:', window.location.href);
+    console.group('Tracking Debug Info');
+    console.log('Time:', new Date().toISOString());
+    console.log('URL:', window.location.href);
     logCookieStates();
-    listAllCookies();
+    console.log('DataLayer Contents:', window.dataLayer);
+    console.groupEnd();
 };
 
-const clearButton = document.createElement('button');
-clearButton.textContent = 'Clear Cookies';
-clearButton.onclick = function() {
-    const cookies = document.cookie.split(';');
-    cookies.forEach(cookie => {
-        const [name] = cookie.split('=');
-        document.cookie = `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Domain=${window.location.hostname}`;
+const testEventButton = document.createElement('button');
+testEventButton.textContent = 'Test Event';
+testEventButton.style.marginRight = '5px';
+testEventButton.onclick = function() {
+    trackEvent('test_event', {
+        test_param: 'test_value',
+        timestamp: new Date().toISOString()
     });
-    console.log('All cookies cleared');
-    listAllCookies();
+    console.log('Test event pushed to dataLayer');
 };
 
 debugPanel.appendChild(debugButton);
-debugPanel.appendChild(clearButton);
-
-// Add the debug panel after DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    document.body.appendChild(debugPanel);
-});
+debugPanel.appendChild(testEventButton);
+document.body.appendChild(debugPanel);
