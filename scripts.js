@@ -5,9 +5,18 @@ window.dataLayer = window.dataLayer || [];
 const GTM_ID = 'GTM-5S8T487L';
 const GA4_ID = 'G-XXXXXXXXXX'; // Replace with your GA4 Measurement ID
 
+// Wait for CookieYes to be ready
+function waitForCookieYes(callback) {
+    if (window.CookieYes && typeof window.CookieYes.getConsent === 'function') {
+        callback();
+    } else {
+        setTimeout(() => waitForCookieYes(callback), 100);
+    }
+}
+
 // Debug function to log cookie states and GTM/GA status
 function logCookieStates() {
-    const consent = CookieYes.getConsent();
+    const consent = window.CookieYes.getConsent();
     console.group('Consent and Tracking Status:');
     console.log('CookieYes Consent:', consent);
     console.log('GTM Status:', window.google_tag_manager ? 'Loaded' : 'Not Loaded');
@@ -63,7 +72,7 @@ function trackEvent(eventName, eventParams = {}) {
 
 // Initialize GTM consent mode
 function initializeGTMConsent() {
-    const consent = CookieYes.getConsent();
+    const consent = window.CookieYes.getConsent();
     
     // Set default consent state (privacy-first approach)
     window.dataLayer.push({
@@ -81,63 +90,73 @@ function initializeGTMConsent() {
     updateGTMConsent(consent);
 }
 
-// Handle CookieYes consent changes
-window.addEventListener('cookieyes_consent_update', function(event) {
-    const consent = CookieYes.getConsent();
-    updateGTMConsent(consent);
-});
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
+// Initialize everything once CookieYes is ready
+function initialize() {
     console.log('Initializing consent management...');
     initializeGTMConsent();
     
     // Track initial page view after consent is established
-    if (CookieYes.getConsent().analytics) {
+    if (window.CookieYes.getConsent().analytics) {
         trackPageView();
     }
+
+    // Setup debug panel
+    setupDebugPanel();
+}
+
+// Setup debug panel
+function setupDebugPanel() {
+    const debugPanel = document.createElement('div');
+    debugPanel.style.cssText = `
+        position: fixed;
+        bottom: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 10px;
+        border-radius: 5px;
+        z-index: 9999;
+        font-family: monospace;
+        font-size: 12px;
+    `;
+
+    // Add debug buttons
+    const debugButton = document.createElement('button');
+    debugButton.textContent = 'Debug Tracking';
+    debugButton.style.marginRight = '5px';
+    debugButton.onclick = function() {
+        console.clear();
+        console.group('Tracking Debug Info');
+        console.log('Time:', new Date().toISOString());
+        console.log('URL:', window.location.href);
+        logCookieStates();
+        console.log('DataLayer Contents:', window.dataLayer);
+        console.groupEnd();
+    };
+
+    const testEventButton = document.createElement('button');
+    testEventButton.textContent = 'Test Event';
+    testEventButton.style.marginRight = '5px';
+    testEventButton.onclick = function() {
+        trackEvent('test_event', {
+            test_param: 'test_value',
+            timestamp: new Date().toISOString()
+        });
+        console.log('Test event pushed to dataLayer');
+    };
+
+    debugPanel.appendChild(debugButton);
+    debugPanel.appendChild(testEventButton);
+    document.body.appendChild(debugPanel);
+}
+
+// Handle CookieYes consent changes
+window.addEventListener('cookieyes_consent_update', function(event) {
+    const consent = window.CookieYes.getConsent();
+    updateGTMConsent(consent);
 });
 
-// Debug Tools
-const debugPanel = document.createElement('div');
-debugPanel.style.cssText = `
-    position: fixed;
-    bottom: 10px;
-    right: 10px;
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 10px;
-    border-radius: 5px;
-    z-index: 9999;
-    font-family: monospace;
-    font-size: 12px;
-`;
-
-// Add debug buttons
-const debugButton = document.createElement('button');
-debugButton.textContent = 'Debug Tracking';
-debugButton.style.marginRight = '5px';
-debugButton.onclick = function() {
-    console.clear();
-    console.group('Tracking Debug Info');
-    console.log('Time:', new Date().toISOString());
-    console.log('URL:', window.location.href);
-    logCookieStates();
-    console.log('DataLayer Contents:', window.dataLayer);
-    console.groupEnd();
-};
-
-const testEventButton = document.createElement('button');
-testEventButton.textContent = 'Test Event';
-testEventButton.style.marginRight = '5px';
-testEventButton.onclick = function() {
-    trackEvent('test_event', {
-        test_param: 'test_value',
-        timestamp: new Date().toISOString()
-    });
-    console.log('Test event pushed to dataLayer');
-};
-
-debugPanel.appendChild(debugButton);
-debugPanel.appendChild(testEventButton);
-document.body.appendChild(debugPanel);
+// Start initialization when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    waitForCookieYes(initialize);
+});
